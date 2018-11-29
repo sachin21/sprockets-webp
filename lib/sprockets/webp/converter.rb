@@ -8,66 +8,65 @@ require 'webp-ffi'
 module Sprockets
   module WebP
     class Converter
-      class << self
+      attr_reader :context
 
-        attr_reader :context
+      def call(input)
+        @context = input[:environment].context_class.new(input)
 
-        def process(app, context, data)
-          @context = context
-          # Application Config alias
-          config = app.config.assets
+        app = ::Rails.application
 
-          # If Application Assets Digests enabled - Add Digest
-          webp_file = webp_file_by_config(config, data)
+        # Application Config alias
+        config = app.config.assets
 
-          # WebP File Pathname
-          webp_path = Pathname.new File.join(app.root, 'public', config.prefix, webp_file)
+        # If Application Assets Digests enabled - Add Digest
+        webp_file = webp_file_by_config(config, input[:data])
 
-          # Create Directory for both Files, unless already exists
-          FileUtils.mkdir_p(webp_path.dirname) unless Dir.exists?(webp_path.dirname)
+        # WebP File Pathname
+        webp_path = Pathname.new File.join(app.root.to_s, 'public', config.prefix, webp_file)
 
-          # encode to webp
-          encode_to_webp(data, webp_path.to_path, webp_file)
+        # Create Directory for both Files, unless already exists
+        FileUtils.mkdir_p(webp_path.dirname) unless Dir.exists?(webp_path.dirname)
 
-          data
-        end
+        # encode to webp
+        encode_to_webp(input[:data], webp_path.to_path, webp_file)
 
-        private
+        input[:data]
+      end
 
-        def webp_file_by_config(config, data)
-          digest    = config.digest ? "-#{context.environment.digest_class.new.update(data).to_s}" : nil
-          file_name = context.logical_path # Original File name w/o extension
-          file_ext  = context.pathname.extname # Original File extension
-          "#{file_name}#{digest}#{file_ext}.webp" # WebP File fullname
-        end
+      private
 
-        def encode_to_webp(data, webp_path, webp_file = "")
-          # Create Temp File with Original File binary data
-          Tempfile.open('webp') do |file|
-            file.binmode
-            file.write(data)
-            file.close
+      def webp_file_by_config(config, data)
+        digest    = config.digest ? "-#{context.environment.digest_class.new.update(data).to_s}" : nil
+        file_name = context.logical_path # Original File name w/o extension
+        file_ext  = context.pathname.extname # Original File extension
+        "#{file_name}#{digest}#{file_ext}.webp" # WebP File fullname
+      end
 
-            # Encode Original File Temp copy to WebP File Pathname
-            begin
-              ::WebP.encode(file.path, webp_path, Sprockets::WebP.encode_options)
-              logger.info "Webp converted image #{webp_path}"
-            rescue => e
-              logger.warn "Webp convertion error of image #{webp_file}. Error info: #{e.message}"
-            end
+      def encode_to_webp(data, webp_path, webp_file = "")
+        # Create Temp File with Original File binary data
+        Tempfile.open('webp') do |file|
+          file.binmode
+          file.write(data)
+          file.close
+
+          # Encode Original File Temp copy to WebP File Pathname
+          begin
+            ::WebP.encode(file.path, webp_path, Sprockets::WebP.encode_options)
+            logger.info "Webp converted image #{webp_path}"
+          rescue => e
+            logger.warn "Webp convertion error of image #{webp_file}. Error info: #{e.message}"
           end
         end
+      end
 
-        def logger
-          if @context && @context.environment
-            @context.environment.logger
-          else
-            logger = Logger.new($stderr)
-            logger.level = Logger::FATAL
-            logger
-          end
+      def logger
+        if context && context.environment
+          context.environment.logger
+        else
+          logger = Logger.new($stderr)
+          logger.level = Logger::FATAL
+          logger
         end
-
       end
     end
   end
